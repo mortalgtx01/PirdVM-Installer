@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GKVM PANEL V1.0 - customer installer
+# PIRDVM PANEL V1.0 - Customer Installer
 set -Eeuo pipefail
 
 RED='\e[1;31m'
@@ -9,33 +9,28 @@ CYAN='\e[1;36m'
 MAGENTA='\e[1;35m'
 NC='\e[0m'
 
-APP_NAME='GKVM Panel V1.0'
+APP_NAME='PirdVM Panel V1.0'
 SERVICE_NAME='gkvm'
 INSTALL_DIR='/opt/gkvm'
 SERVICE_USER='gkvm'
 PANEL_PORT="${PANEL_PORT:-8080}"
-NODE_MAJOR=20
+NODE_MAJOR=22
 
-# ============================================================
-# GKVM PRIVATE ARTIFACT
-# ============================================================
+LICENSE_SERVER_URL='https://arinjay01.pythonanywhere.com'
+LICENSE_PRODUCT='PIRDVM-PANEL'
+LICENSE_GRACE_PERIOD=86400
 
 ARTIFACT_URL="${ARTIFACT_URL:-https://arinjay01.pythonanywhere.com/download/gkvm-panel.tar.gz}"
-ARTIFACT_KEY="${ARTIFACT_KEY:-ILoveYouHitakshi}"
+ARTIFACT_KEY="${ARTIFACT_KEY:-}"
 
-# ============================================================
-# TEMP / LOG
-# ============================================================
-
-TMP_DIR="$(mktemp -d /tmp/gkvm-install.XXXXXX)"
-ARCHIVE="${TMP_DIR}/gkvm-panel.tar.gz"
+TMP_DIR="$(mktemp -d /tmp/pirdvm-install.XXXXXX)"
+ARCHIVE="${TMP_DIR}/pirdvm-panel.tar.gz"
 LOG_FILE='/var/log/gkvm.log'
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 cleanup() {
     rm -rf "$TMP_DIR"
 }
-
 trap cleanup EXIT
 
 die() {
@@ -59,34 +54,27 @@ line() {
     echo -e "${MAGENTA}============================================================${NC}"
 }
 
-
 # ============================================================
 # BASIC CHECKS
 # ============================================================
 
-[[ $EUID -eq 0 ]] || die 'Run as root.'
-
-[[ "$ARTIFACT_URL" != *'YOUR-DOWNLOAD-HOST'* ]] || \
-    die 'Set ARTIFACT_URL in install.sh before publishing.'
-
-[[ "$ARTIFACT_KEY" != 'CHANGE_ME' ]] || \
-    die 'Set ARTIFACT_KEY in install.sh before publishing.'
+[[ $EUID -eq 0 ]] || die 'Please run as root.'
 
 command -v systemctl >/dev/null 2>&1 || \
-    die 'systemd is required.'
+    die 'This installer requires a VPS with systemd.'
 
+[[ -f /etc/os-release ]] || die 'Unsupported operating system.'
 source /etc/os-release
 
 ARCH="$(uname -m)"
 
 case "$ARCH" in
-    x86_64|amd64|aarch64|arm64)
+    x86_64|amd64)
         ;;
     *)
-        die "Unsupported architecture: $ARCH"
+        die "Unsupported architecture for this KVM panel: $ARCH"
         ;;
 esac
-
 
 # ============================================================
 # BANNER
@@ -95,21 +83,40 @@ esac
 printf '%b' "$CYAN"
 
 cat <<'BANNER'
-   ██████╗ ██╗  ██╗██╗   ██╗███╗   ███╗
-  ██╔════╝ ██║ ██╔╝██║   ██║████╗ ████║
-  ██║  ███╗█████╔╝ ██║   ██║██╔████╔██║
-  ██║   ██║██╔═██╗ ╚██╗ ██╔╝██║╚██╔╝██║
-  ╚██████╔╝██║  ██╗ ╚████╔╝ ██║ ╚═╝ ██║
-   ╚═════╝ ╚═╝  ╚═╝  ╚═══╝  ╚═╝     ╚═╝
-                 GKVM PANEL V1.0
+
+  ██████╗ ██╗██████╗ ██████╗ ██╗   ██╗███╗   ███╗
+  ██╔══██╗██║██╔══██╗██╔══██╗██║   ██║████╗ ████║
+  ██████╔╝██║██████╔╝██║  ██║██║   ██║██╔████╔██║
+  ██╔═══╝ ██║██╔══██╗██║  ██║╚██╗ ██╔╝██║╚██╔╝██║
+  ██║     ██║██║  ██║██████╔╝ ╚████╔╝ ██║ ╚═╝ ██║
+  ╚═╝     ╚═╝╚═╝  ╚═╝╚═════╝   ╚═══╝  ╚═╝     ╚═╝
+
+                  PIRDVM PANEL V1.0
+
 BANNER
 
 printf '%b\n' "$NC"
-
 line
 
-info "OS: ${PRETTY_NAME:-$ID} | Arch: $ARCH | Port: $PANEL_PORT"
+info "OS: ${PRETTY_NAME:-$ID}"
+info "Architecture: $ARCH"
+info "Panel Port: $PANEL_PORT"
+info "License Server: $LICENSE_SERVER_URL"
 
+# ============================================================
+# ARTIFACT AUTHENTICATION
+# ============================================================
+
+if [[ -z "$ARTIFACT_KEY" ]]; then
+    if [[ -t 0 ]]; then
+        read -r -s -p 'Enter PirdVM artifact key: ' ARTIFACT_KEY
+        echo
+    else
+        die 'Set ARTIFACT_KEY before running non-interactively.'
+    fi
+fi
+
+[[ -n "$ARTIFACT_KEY" ]] || die 'Artifact key is required.'
 
 # ============================================================
 # SYSTEM DEPENDENCIES
@@ -167,72 +174,44 @@ elif command -v dnf >/dev/null 2>&1; then
         iproute \
         sudo
 
-elif command -v yum >/dev/null 2>&1; then
-
-    yum -y install \
-        curl \
-        ca-certificates \
-        gcc \
-        gcc-c++ \
-        make \
-        python3 \
-        sqlite \
-        sqlite-devel \
-        qemu-img \
-        genisoimage \
-        xorriso \
-        bridge-utils \
-        net-tools \
-        unzip \
-        rsync \
-        lsof \
-        procps-ng \
-        iproute \
-        sudo
-
 else
-
-    die 'Unsupported package manager.'
-
+    die 'Unsupported package manager. Use Ubuntu, Debian or a compatible Linux VPS.'
 fi
 
 ok 'System dependencies installed.'
 
-
 # ============================================================
-# NODE.JS
+# NODE.JS INSTALLATION
 # ============================================================
 
 if ! command -v node >/dev/null 2>&1 || \
    [[ "$(node -p 'process.versions.node.split(".")[0]')" -lt "$NODE_MAJOR" ]]; then
 
+    info "Installing Node.js ${NODE_MAJOR}..."
+
     if command -v apt-get >/dev/null 2>&1; then
 
         curl -fsSL \
-            "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
+            "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" \
+            -o "$TMP_DIR/nodesource.sh"
 
+        bash "$TMP_DIR/nodesource.sh"
         apt-get install -y nodejs
-
-    elif command -v dnf >/dev/null 2>&1; then
-
-        curl -fsSL \
-            "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
-
-        dnf install -y nodejs
 
     else
 
         curl -fsSL \
-            "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
+            "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" \
+            -o "$TMP_DIR/nodesource.sh"
 
-        yum install -y nodejs
+        bash "$TMP_DIR/nodesource.sh"
+        dnf install -y nodejs
 
     fi
-
 fi
 
-ok "Node $(node -v), npm $(npm -v)"
-
+ok "Node: $(node -v)"
+ok "NPM: $(npm -v)"
 
 # ============================================================
 # SERVICE USER
@@ -245,30 +224,30 @@ if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
         --create-home \
         --shell /usr/sbin/nologin \
         "$SERVICE_USER"
-
 fi
 
-getent group kvm >/dev/null 2>&1 && \
-    usermod -aG kvm "$SERVICE_USER" || true
-
+if getent group kvm >/dev/null 2>&1; then
+    usermod -aG kvm "$SERVICE_USER"
+fi
 
 # ============================================================
 # PORT CHECK
 # ============================================================
 
-if ss -ltn 2>/dev/null | \
-    grep -qE ":${PANEL_PORT}[[:space:]]"; then
+if ! systemctl is-active --quiet "$SERVICE_NAME"; then
 
-    die "Port ${PANEL_PORT} is already in use. Set PANEL_PORT before running the installer."
+    if ss -ltn 2>/dev/null | \
+        grep -qE ":${PANEL_PORT}[[:space:]]"; then
 
+        die "Port ${PANEL_PORT} is already in use."
+    fi
 fi
 
-
 # ============================================================
-# DOWNLOAD ARTIFACT
+# DOWNLOAD PIRDVM ARTIFACT
 # ============================================================
 
-info 'Downloading GKVM Panel artifact...'
+info 'Downloading PirdVM Panel...'
 
 curl \
     --fail \
@@ -276,38 +255,32 @@ curl \
     --show-error \
     --location \
     --retry 3 \
-    --connect-timeout 10 \
+    --connect-timeout 15 \
+    --max-time 300 \
     -H "X-Artifact-Key: ${ARTIFACT_KEY}" \
     "$ARTIFACT_URL" \
     -o "$ARCHIVE"
 
-[[ -s "$ARCHIVE" ]] || \
-    die 'Artifact download was empty.'
+[[ -s "$ARCHIVE" ]] || die 'Artifact download is empty.'
 
-ok 'Panel artifact downloaded.'
-
+ok 'PirdVM artifact downloaded.'
 
 # ============================================================
 # VALIDATE ARTIFACT
 # ============================================================
 
-info 'Validating artifact...'
+info 'Validating PirdVM package...'
 
 tar -tzf "$ARCHIVE" >/dev/null || \
-    die 'Downloaded artifact is not a valid gzip tar archive.'
-
-rm -rf "$TMP_DIR/panel"
+    die 'Invalid panel archive.'
 
 mkdir -p "$TMP_DIR/panel"
 
 tar -xzf "$ARCHIVE" -C "$TMP_DIR/panel"
 
-# Support either a flat archive or a single top-level directory.
-
 SOURCE_DIR="$TMP_DIR/panel"
 
 shopt -s nullglob dotglob
-
 entries=("$SOURCE_DIR"/*)
 
 if [[ ${#entries[@]} -eq 1 && \
@@ -315,44 +288,72 @@ if [[ ${#entries[@]} -eq 1 && \
       -f "${entries[0]}/package.json" ]]; then
 
     SOURCE_DIR="${entries[0]}"
-
 fi
-
-[[ -f "$SOURCE_DIR/package.json" ]] || \
-    die 'Artifact does not contain package.json.'
-
-[[ -f "$SOURCE_DIR/package-lock.json" ]] || \
-    die 'Artifact does not contain package-lock.json.'
-
-[[ -f "$SOURCE_DIR/app.js" ]] || \
-    die 'Artifact does not contain app.js.'
 
 shopt -u nullglob dotglob
 
-ok 'Artifact validated.'
+[[ -f "$SOURCE_DIR/package.json" ]] || \
+    die 'package.json not found in artifact.'
 
+[[ -f "$SOURCE_DIR/package-lock.json" ]] || \
+    die 'package-lock.json not found in artifact.'
+
+[[ -f "$SOURCE_DIR/app.js" ]] || \
+    die 'app.js not found in artifact.'
+
+ok 'Panel package validated.'
 
 # ============================================================
-# INSTALL PANEL
+# BACKUP EXISTING INSTALLATION
+# ============================================================
+
+if [[ -f "$INSTALL_DIR/app.js" ]]; then
+
+    info 'Existing installation detected.'
+
+    BACKUP_DIR="/opt/pirdvm-backup-$(date +%Y%m%d-%H%M%S)"
+
+    mkdir -p "$BACKUP_DIR"
+
+    if [[ -f "$INSTALL_DIR/.env" ]]; then
+        cp -a "$INSTALL_DIR/.env" "$BACKUP_DIR/.env"
+    fi
+
+    if [[ -d "$INSTALL_DIR/data" ]]; then
+        cp -a "$INSTALL_DIR/data" "$BACKUP_DIR/data"
+    fi
+
+    ok "Existing configuration and data backed up: $BACKUP_DIR"
+fi
+
+# ============================================================
+# STOP OLD SERVICE
 # ============================================================
 
 systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
+
+# ============================================================
+# INSTALL PANEL FILES
+# ============================================================
+
+info 'Installing PirdVM Panel...'
 
 mkdir -p "$INSTALL_DIR"
 
 rsync -a --delete \
     --exclude '.env' \
-    --exclude 'data' \
-    --exclude 'node_modules' \
-    --exclude '.git' \
+    --exclude 'data/' \
+    --exclude 'node_modules/' \
+    --exclude '.git/' \
     "$SOURCE_DIR/" \
     "$INSTALL_DIR/"
 
 mkdir -p "$INSTALL_DIR/data"
 
+ok 'Panel files installed.'
 
 # ============================================================
-# CREATE ENV
+# ENVIRONMENT CONFIGURATION
 # ============================================================
 
 ENV_FILE="$INSTALL_DIR/.env"
@@ -372,37 +373,77 @@ if [[ ! -f "$ENV_FILE" ]]; then
     cat > "$ENV_FILE" <<EOF_ENV
 PORT=${PANEL_PORT}
 VNM_DATA_DIR=${INSTALL_DIR}/data
-PANEL_NAME=GKVM Panel
+PANEL_NAME=PirdVM Panel
 PANEL_VERSION=V1.0
-DEFAULT_LOGO_URL=https://i.imgur.com/4p7wdYK.png
 NODE_ENV=production
 SESSION_SECRET=${SESSION_SECRET}
 
-LICENSE_SERVER_URL=https://arinjay01.pythonanywhere.com
-LICENSE_PRODUCT=GKVM-PANEL
-LICENSE_GRACE_PERIOD=86400
+LICENSE_SERVER_URL=${LICENSE_SERVER_URL}
+LICENSE_PRODUCT=${LICENSE_PRODUCT}
+LICENSE_GRACE_PERIOD=${LICENSE_GRACE_PERIOD}
 
-DEFAULT_ADMIN_USERNAME=admin@gkvm.gtx
+DEFAULT_ADMIN_USERNAME=admin@pirdvm.local
 DEFAULT_ADMIN_PASSWORD=${ADMIN_PASSWORD}
 EOF_ENV
+
+    chmod 600 "$ENV_FILE"
 
     printf '%s\n' "$ADMIN_PASSWORD" > \
         "$TMP_DIR/admin-password"
 
     chmod 600 "$TMP_DIR/admin-password"
 
-    ok 'Created secure .env.'
+    ok 'New PirdVM environment created.'
 
 else
 
-    warn 'Existing .env preserved.'
+    warn 'Existing .env detected. Preserving credentials and updating branding.'
 
+    python3 - "$ENV_FILE" "$PANEL_PORT" <<'PYENV'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+port = sys.argv[2]
+
+updates = {
+    "PORT": port,
+    "PANEL_NAME": "PirdVM Panel",
+    "PANEL_VERSION": "V1.0",
+    "LICENSE_SERVER_URL": "https://arinjay01.pythonanywhere.com",
+    "LICENSE_PRODUCT": "PIRDVM-PANEL",
+    "LICENSE_GRACE_PERIOD": "86400",
+}
+
+lines = path.read_text().splitlines()
+
+for key, value in updates.items():
+    found = False
+    result = []
+
+    for line in lines:
+        if line.startswith(key + "="):
+            result.append(f"{key}={value}")
+            found = True
+        else:
+            result.append(line)
+
+    if not found:
+        result.append(f"{key}={value}")
+
+    lines = result
+
+path.write_text("\n".join(lines) + "\n")
+PYENV
+
+    ok 'Existing environment updated.'
 fi
 
+# ============================================================
+# INSTALL NODE DEPENDENCIES
+# ============================================================
 
-# ============================================================
-# NPM INSTALL
-# ============================================================
+info 'Installing Node.js dependencies...'
 
 cd "$INSTALL_DIR"
 
@@ -410,12 +451,13 @@ npm ci \
     --omit=dev \
     --foreground-scripts
 
-ok 'Node dependencies installed.'
-
+ok 'Node.js dependencies installed.'
 
 # ============================================================
-# PERMISSIONS
+# FILE PERMISSIONS
 # ============================================================
+
+info 'Configuring permissions...'
 
 chown -R \
     "${SERVICE_USER}:${SERVICE_USER}" \
@@ -435,6 +477,7 @@ chown \
 
 chmod 640 "$LOG_FILE"
 
+ok 'Permissions configured.'
 
 # ============================================================
 # FIREWALL
@@ -442,10 +485,8 @@ chmod 640 "$LOG_FILE"
 
 if command -v ufw >/dev/null 2>&1; then
 
-    ufw allow \
-        "${PANEL_PORT}/tcp" \
+    ufw allow "${PANEL_PORT}/tcp" \
         >/dev/null 2>&1 || true
-
 fi
 
 if command -v firewall-cmd >/dev/null 2>&1; then
@@ -455,22 +496,21 @@ if command -v firewall-cmd >/dev/null 2>&1; then
         --add-port="${PANEL_PORT}/tcp" \
         >/dev/null 2>&1 || true
 
-    firewall-cmd \
-        --reload \
+    firewall-cmd --reload \
         >/dev/null 2>&1 || true
-
 fi
-
 
 # ============================================================
 # SYSTEMD SERVICE
 # ============================================================
 
+info 'Creating PirdVM systemd service...'
+
 NODE_BIN="$(command -v node)"
 
 cat > "$SERVICE_FILE" <<EOF_SERVICE
 [Unit]
-Description=GKVM Panel V1.0
+Description=PirdVM Panel
 After=network-online.target
 Wants=network-online.target
 
@@ -493,9 +533,8 @@ ReadWritePaths=${INSTALL_DIR}
 WantedBy=multi-user.target
 EOF_SERVICE
 
-
 # ============================================================
-# START SERVICE
+# START PANEL
 # ============================================================
 
 systemctl daemon-reload
@@ -513,13 +552,32 @@ if ! systemctl is-active --quiet "$SERVICE_NAME"; then
         -n 80 \
         --no-pager || true
 
-    die 'GKVM Panel failed to start.'
-
+    die 'PirdVM Panel failed to start.'
 fi
 
+ok 'PirdVM service started successfully.'
 
 # ============================================================
-# FINAL OUTPUT
+# VERIFY PANEL
+# ============================================================
+
+info 'Checking local panel response...'
+
+if curl \
+    --silent \
+    --output /dev/null \
+    --max-time 10 \
+    "http://127.0.0.1:${PANEL_PORT}/"; then
+
+    ok 'PirdVM Panel is responding.'
+
+else
+
+    warn 'Service is running, but HTTP response could not be confirmed.'
+fi
+
+# ============================================================
+# PUBLIC IP
 # ============================================================
 
 PUBLIC_IP="$(
@@ -532,38 +590,49 @@ PUBLIC_IP="$(
 
 PUBLIC_IP="${PUBLIC_IP:-YOUR_SERVER_IP}"
 
+# ============================================================
+# INSTALLATION COMPLETE
+# ============================================================
+
+echo
 line
 
-echo -e "${GREEN}GKVM PANEL V1.0 — INSTALLATION COMPLETE${NC}"
+echo -e "${GREEN}PIRDVM PANEL V1.0 INSTALLED SUCCESSFULLY${NC}"
 
-echo "Panel:     http://${PUBLIC_IP}:${PANEL_PORT}"
-echo "Directory: ${INSTALL_DIR}"
-echo "Service:   ${SERVICE_NAME}"
-echo "Logs:      journalctl -u ${SERVICE_NAME} -f"
+line
+
+echo
+echo "Panel URL:       http://${PUBLIC_IP}:${PANEL_PORT}"
+echo "Panel Name:      PirdVM Panel"
+echo "Install Path:    ${INSTALL_DIR}"
+echo "Service Name:    ${SERVICE_NAME}"
+echo "License Server:  ${LICENSE_SERVER_URL}"
+echo "License Product: ${LICENSE_PRODUCT}"
+
+echo
+echo "Service Commands:"
+echo "  systemctl status ${SERVICE_NAME}"
+echo "  systemctl restart ${SERVICE_NAME}"
+echo "  journalctl -u ${SERVICE_NAME} -f"
 
 echo
 
-if [[ ! -f "$INSTALL_DIR/.gkvm-admin-password-shown" ]]; then
+if [[ -f "$TMP_DIR/admin-password" ]]; then
 
-    if [[ -f "$TMP_DIR/admin-password" ]]; then
+    echo -e "${YELLOW}INITIAL ADMIN LOGIN${NC}"
+    echo "Username: admin@pirdvm.local"
+    echo "Password: $(cat "$TMP_DIR/admin-password")"
 
-        echo "Initial login:"
-        echo "  Username: admin@gkvm.gtx"
-        echo "  Password: $(cat "$TMP_DIR/admin-password")"
+    echo
+    echo "Save these credentials securely."
+    echo "Change your admin password after first login."
 
-        touch "$INSTALL_DIR/.gkvm-admin-password-shown"
+else
 
-        chown \
-            "$SERVICE_USER:$SERVICE_USER" \
-            "$INSTALL_DIR/.gkvm-admin-password-shown"
-
-        chmod 600 \
-            "$INSTALL_DIR/.gkvm-admin-password-shown"
-
-    fi
-
+    echo "Existing admin credentials have been preserved."
 fi
 
+echo
 line
 
-ok 'Installation finished.'
+ok 'PirdVM Panel installation finished.'
